@@ -1,0 +1,10 @@
+hacktivator
+*.exe
+*.dll
+*.so
+*.dylib
+.DS_Store
+*.test
+*.out
+vendor/
+dist/

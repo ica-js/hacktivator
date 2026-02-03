@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+brews:
+  - repository:
+      owner: user  # Change to your GitHub username
+      name: homebrew-tap
+    homepage: "https://github.com/user/hacktivator"  # Change to your GitHub username
+    description: "CLI tool to activate Azure PIM eligible roles"
+    license: "MIT"
+    install: |
+      bin.install "hacktivator"
+    test: |
+      system "#{bin}/hacktivator", "--help"
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  github:
+    owner: user  # Change to your GitHub username
+    name: hacktivator
