@@ -29,18 +29,6 @@ archives:
       - goos: windows
         format: zip
 
-brews:
-  - repository:
-      owner: ica-js
-      name: homebrew-tap
-    homepage: "https://github.com/ica-js/hacktivator"
-    description: "CLI tool to activate Azure PIM eligible roles"
-    license: "MIT"
-    install: |
-      bin.install "hacktivator"
-    test: |
-      system "#{bin}/hacktivator", "--help"
-
 checksum:
   name_template: 'checksums.txt'
 
