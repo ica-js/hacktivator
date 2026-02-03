@@ -1,4 +1,4 @@
-module github.com/user/hacktivator
+module github.com/ica-js/hacktivator
 
 go 1.21
 

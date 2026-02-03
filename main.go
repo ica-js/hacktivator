@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/user/hacktivator/internal/azure"
-	"github.com/user/hacktivator/internal/ui"
+	"github.com/ica-js/hacktivator/internal/azure"
+	"github.com/ica-js/hacktivator/internal/ui"
 )
 
 var (

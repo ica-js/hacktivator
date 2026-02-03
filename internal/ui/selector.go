@@ -8,7 +8,7 @@ import (
 
 	fuzzyfinder "github.com/ktr0731/go-fuzzyfinder"
 
-	"github.com/user/hacktivator/internal/azure"
+	"github.com/ica-js/hacktivator/internal/azure"
 )
 
 // SelectRole presents an interactive fuzzy finder for selecting an eligible role

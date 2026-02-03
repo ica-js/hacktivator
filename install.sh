@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="user/hacktivator"  # Change to your org/repo
+REPO="ica-js/hacktivator"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and architecture

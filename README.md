@@ -25,7 +25,7 @@ Make sure you're authenticated with the GitHub CLI, then run:
 gh auth login
 
 # Install hacktivator
-gh release download --repo ORG/hacktivator --pattern '*darwin_arm64*' -O - | tar -xz && sudo mv hacktivator /usr/local/bin/
+gh release download --repo ica-js/hacktivator --pattern '*darwin_arm64*' -O - | tar -xz && sudo mv hacktivator /usr/local/bin/
 ```
 
 Replace `darwin_arm64` with your platform:
@@ -39,7 +39,7 @@ Replace `darwin_arm64` with your platform:
 Clone the repo and run the install script:
 
 ```bash
-git clone https://github.com/ORG/hacktivator.git
+git clone https://github.com/ica-js/hacktivator.git
 cd hacktivator
 ./install.sh
 ```
@@ -48,7 +48,7 @@ The script auto-detects your OS and architecture.
 
 ### Manual Download
 
-1. Go to the [Releases page](https://github.com/ORG/hacktivator/releases)
+1. Go to the [Releases page](https://github.com/ica-js/hacktivator/releases)
 2. Download the archive for your platform
 3. Extract and move to your PATH:
 
@@ -60,7 +60,7 @@ sudo mv hacktivator /usr/local/bin/
 ### Build from Source
 
 ```bash
-git clone https://github.com/ORG/hacktivator.git
+git clone https://github.com/ica-js/hacktivator.git
 cd hacktivator
 go build -o hacktivator .
 sudo mv hacktivator /usr/local/bin/
