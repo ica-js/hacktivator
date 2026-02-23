@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -24,7 +23,7 @@ func main() {
 	rootCmd := &cobra.Command{
 		Use:   "hacktivator",
 		Short: "Activate Azure PIM eligible roles from the command line",
-		Long: `Hacktivator is a CLI tool that allows you to quickly activate 
+		Long: `Hacktivator is a CLI tool that allows you to quickly activate
 eligible Azure PIM (Privileged Identity Management) roles.
 
 It uses the Azure CLI for authentication and provides an interactive
@@ -82,20 +81,25 @@ func checkPrerequisites() error {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
+	azure.Verbose = verbose
+
 	if err := checkPrerequisites(); err != nil {
 		return err
 	}
 
 	// Get current user info
-	user, err := azure.GetCurrentUser()
+	user, err := ui.SpinWithResult("Fetching user info", func() (*azure.UserInfo, error) {
+		return azure.GetCurrentUser()
+	}, false)
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	fmt.Printf("Logged in as: %s\n\n", user.DisplayName)
+	fmt.Printf("Logged in as: %s\n\n", ui.TitleStyle.Render(user.DisplayName))
 
 	// Fetch eligible role assignments
-	fmt.Println("Fetching eligible role assignments...")
-	eligibleRoles, err := azure.GetEligibleRoleAssignments()
+	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.EligibleRole, error) {
+		return azure.GetEligibleRoleAssignments()
+	}, false)
 	if err != nil {
 		return fmt.Errorf("failed to get eligible roles: %w", err)
 	}
@@ -105,39 +109,32 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("\nFound %d eligible role(s):\n\n", len(eligibleRoles))
-	fmt.Printf("%-30s %-40s %-15s\n", "ROLE", "SCOPE", "TYPE")
-	fmt.Printf("%-30s %-40s %-15s\n", "----", "-----", "----")
-	for _, role := range eligibleRoles {
-		scopeName := role.ScopeName
-		if len(scopeName) > 38 {
-			scopeName = scopeName[:35] + "..."
-		}
-		roleName := role.RoleName
-		if len(roleName) > 28 {
-			roleName = roleName[:25] + "..."
-		}
-		fmt.Printf("%-30s %-40s %-15s\n", roleName, scopeName, role.ScopeType)
-	}
+	fmt.Printf("Found %d eligible role(s):\n\n", len(eligibleRoles))
+	fmt.Print(ui.RenderEligibleRolesTable(eligibleRoles))
 
 	return nil
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
+	azure.Verbose = verbose
+
 	if err := checkPrerequisites(); err != nil {
 		return err
 	}
 
 	// Get current user info
-	user, err := azure.GetCurrentUser()
+	user, err := ui.SpinWithResult("Fetching user info", func() (*azure.UserInfo, error) {
+		return azure.GetCurrentUser()
+	}, false)
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	fmt.Printf("Logged in as: %s\n\n", user.DisplayName)
+	fmt.Printf("Logged in as: %s\n\n", ui.TitleStyle.Render(user.DisplayName))
 
 	// Fetch active role assignments
-	fmt.Println("Fetching active role assignments...")
-	activeRoles, err := azure.GetActiveRoleAssignments()
+	activeRoles, err := ui.SpinWithResult("Fetching active roles", func() ([]azure.EligibleRole, error) {
+		return azure.GetActiveRoleAssignments()
+	}, false)
 	if err != nil {
 		return fmt.Errorf("failed to get active roles: %w", err)
 	}
@@ -147,24 +144,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("\nFound %d active role(s):\n\n", len(activeRoles))
-	fmt.Printf("%-30s %-40s %-15s %-10s\n", "ROLE", "SCOPE", "TYPE", "STATUS")
-	fmt.Printf("%-30s %-40s %-15s %-10s\n", "----", "-----", "----", "------")
-	for _, role := range activeRoles {
-		scopeName := role.ScopeName
-		if len(scopeName) > 38 {
-			scopeName = scopeName[:35] + "..."
-		}
-		roleName := role.RoleName
-		if len(roleName) > 28 {
-			roleName = roleName[:25] + "..."
-		}
-		status := role.Status
-		if status == "" {
-			status = "Active"
-		}
-		fmt.Printf("%-30s %-40s %-15s %-10s\n", roleName, scopeName, role.ScopeType, status)
-	}
+	fmt.Printf("Found %d active role(s):\n\n", len(activeRoles))
+	fmt.Print(ui.RenderActiveRolesTable(activeRoles))
 
 	return nil
 }
@@ -178,20 +159,23 @@ func runActivate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get current user info
-	user, err := azure.GetCurrentUser()
+	user, err := ui.SpinWithResult("Fetching user info", func() (*azure.UserInfo, error) {
+		return azure.GetCurrentUser()
+	}, nonInteractive)
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
-	fmt.Printf("Logged in as: %s\n\n", user.DisplayName)
+	fmt.Printf("Logged in as: %s\n\n", ui.TitleStyle.Render(user.DisplayName))
 
 	// Fetch eligible role assignments
-	fmt.Println("Fetching eligible role assignments...")
-	startTime := time.Now()
-	eligibleRoles, err := azure.GetEligibleRoleAssignments()
+	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.EligibleRole, error) {
+		return azure.GetEligibleRoleAssignments()
+	}, nonInteractive)
 	if err != nil {
 		return fmt.Errorf("failed to get eligible roles: %w", err)
 	}
-	fmt.Printf("Found %d eligible role(s) in %v\n", len(eligibleRoles), time.Since(startTime).Round(time.Millisecond))
+
+	fmt.Printf("Found %d eligible role(s)\n", len(eligibleRoles))
 
 	if len(eligibleRoles) == 0 {
 		fmt.Println("No eligible role assignments found.")
@@ -214,8 +198,6 @@ func runActivate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Activate the role
-	fmt.Printf("\nActivating %s on %s...\n", selectedRole.RoleName, selectedRole.ScopeName)
-
 	activationRequest := azure.ActivationRequest{
 		Role:          *selectedRole,
 		Duration:      duration,
@@ -224,11 +206,16 @@ func runActivate(cmd *cobra.Command, args []string) error {
 		TicketSystem:  ticketSys,
 	}
 
-	err = azure.ActivateRole(activationRequest)
+	err = ui.SpinWithAction(
+		fmt.Sprintf("Activating %s on %s", selectedRole.RoleName, selectedRole.ScopeName),
+		func() error { return azure.ActivateRole(activationRequest) },
+		nonInteractive,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to activate role: %w", err)
 	}
 
-	fmt.Printf("✓ Successfully activated %s for %d minutes\n", selectedRole.RoleName, duration)
+	fmt.Println(ui.SuccessStyle.Render(
+		fmt.Sprintf("Successfully activated %s for %d minutes", selectedRole.RoleName, duration)))
 	return nil
 }
