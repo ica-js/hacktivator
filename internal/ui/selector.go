@@ -143,9 +143,15 @@ func (m *selectorModel) updatePreview() {
 		{"Assignment ID", role.EligibilityID},
 	}
 
+	labelWidth := 16 // 14 chars + 2 spaces
+	valueWidth := m.viewport.Width - labelWidth
+	if valueWidth < 20 {
+		valueWidth = 20
+	}
+
 	for _, f := range fields {
 		label := PreviewLabelStyle.Render(fmt.Sprintf("%-14s", f.label))
-		value := PreviewValueStyle.Render(f.value)
+		value := PreviewValueStyle.Width(valueWidth).Render(f.value)
 		b.WriteString(label + "  " + value + "\n")
 	}
 
