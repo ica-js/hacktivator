@@ -81,8 +81,8 @@ func (m selectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			listWidth := m.width * 60 / 100
 			previewWidth := m.width - listWidth - 2
 			m.list.SetSize(listWidth, m.height)
-			m.viewport.Width = previewWidth - 4
-			m.viewport.Height = m.height - 4
+			m.viewport.Width = previewWidth - 2
+			m.viewport.Height = m.height
 		} else {
 			m.list.SetSize(m.width, m.height)
 		}
@@ -131,7 +131,8 @@ func (m *selectorModel) updatePreview() {
 	role := item.role
 	var b strings.Builder
 
-	b.WriteString(PreviewTitleStyle.Render("Role Details") + "\n\n")
+	b.WriteString(PreviewTitleStyle.Render("Role Details") + "\n")
+	b.WriteString("────────────────────────────────────\n")
 
 	fields := []struct{ label, value string }{
 		{"Role Name", role.RoleName},
@@ -161,9 +162,9 @@ func (m *selectorModel) updatePreview() {
 func (m selectorModel) View() string {
 	if m.showPreview {
 		listView := m.list.View()
-		previewBox := PreviewBorderStyle.
-			Width(m.width - m.width*60/100 - 6).
-			Height(m.height - 4).
+		previewBox := lipgloss.NewStyle().
+			Width(m.width - m.width*60/100 - 2).
+			Height(m.height).
 			Render(m.viewport.View())
 		return lipgloss.JoinHorizontal(lipgloss.Top, listView, previewBox)
 	}

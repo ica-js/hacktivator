@@ -8,3 +8,4 @@ hacktivator
 *.out
 vendor/
 dist/
+.crush/
