@@ -12,58 +12,12 @@ A CLI tool to quickly activate Azure PIM (Privileged Identity Management) eligib
 ## Prerequisites
 
 - **Azure CLI** - Install from [Microsoft's documentation](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
-- **GitHub CLI** - Install from [cli.github.com](https://cli.github.com/) (for installation only)
+- **Go 1.21+** - Install from [go.dev](https://go.dev/dl/)
 
 ## Installation
 
-### Quick Install (Recommended)
-
-Make sure you're authenticated with the GitHub CLI, then run:
-
 ```bash
-# One-time setup (if not already done)
-gh auth login
-
-# Install hacktivator
-gh release download --repo ica-js/hacktivator --pattern '*darwin_arm64*' -O - | tar -xz && sudo mv hacktivator /usr/local/bin/
-```
-
-Replace `darwin_arm64` with your platform:
-- `darwin_arm64` - macOS Apple Silicon
-- `darwin_amd64` - macOS Intel
-- `linux_amd64` - Linux x86_64
-- `linux_arm64` - Linux ARM64
-
-### Install Script
-
-Clone the repo and run the install script:
-
-```bash
-git clone https://github.com/ica-js/hacktivator.git
-cd hacktivator
-./install.sh
-```
-
-The script auto-detects your OS and architecture.
-
-### Manual Download
-
-1. Go to the [Releases page](https://github.com/ica-js/hacktivator/releases)
-2. Download the archive for your platform
-3. Extract and move to your PATH:
-
-```bash
-tar -xzf hacktivator_*.tar.gz
-sudo mv hacktivator /usr/local/bin/
-```
-
-### Build from Source
-
-```bash
-git clone https://github.com/ica-js/hacktivator.git
-cd hacktivator
-go build -o hacktivator .
-sudo mv hacktivator /usr/local/bin/
+go install github.com/ica-js/hacktivator@latest
 ```
 
 ## Usage
