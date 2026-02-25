@@ -28,6 +28,10 @@ eligible Azure PIM (Privileged Identity Management) roles.
 
 It uses the Azure CLI for authentication and provides an interactive
 fuzzy-finder interface for selecting subscriptions and roles.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			azure.Verbose = verbose
+			return checkPrerequisites()
+		},
 		RunE: runActivate,
 	}
 
@@ -67,37 +71,34 @@ func statusCmd() *cobra.Command {
 }
 
 func checkPrerequisites() error {
-	// Check if Azure CLI is installed
 	if !azure.IsAzCliInstalled() {
-		return fmt.Errorf("Azure CLI (az) is not installed. Please install it from https://docs.microsoft.com/en-us/cli/azure/install-azure-cli")
+		return fmt.Errorf("azure CLI (az) is not installed, see https://docs.microsoft.com/en-us/cli/azure/install-azure-cli")
 	}
 
-	// Check if user is authenticated
 	if !azure.IsAuthenticated() {
-		return fmt.Errorf("You are not logged in to Azure CLI. Please run 'az login' first")
+		return fmt.Errorf("not logged in to Azure CLI, run 'az login' first")
 	}
 
 	return nil
 }
 
-func runList(cmd *cobra.Command, args []string) error {
-	azure.Verbose = verbose
+func fetchCurrentUser(nonInteractive bool) (*azure.UserInfo, error) {
+	user, err := ui.SpinWithResult("Fetching user info", func() (*azure.UserInfo, error) {
+		return azure.GetCurrentUser()
+	}, nonInteractive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current user: %w", err)
+	}
+	fmt.Printf("Logged in as: %s\n\n", ui.TitleStyle.Render(user.DisplayName))
+	return user, nil
+}
 
-	if err := checkPrerequisites(); err != nil {
+func runList(cmd *cobra.Command, args []string) error {
+	if _, err := fetchCurrentUser(false); err != nil {
 		return err
 	}
 
-	// Get current user info
-	user, err := ui.SpinWithResult("Fetching user info", func() (*azure.UserInfo, error) {
-		return azure.GetCurrentUser()
-	}, false)
-	if err != nil {
-		return fmt.Errorf("failed to get current user: %w", err)
-	}
-	fmt.Printf("Logged in as: %s\n\n", ui.TitleStyle.Render(user.DisplayName))
-
-	// Fetch eligible role assignments
-	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.EligibleRole, error) {
+	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.RoleAssignment, error) {
 		return azure.GetEligibleRoleAssignments()
 	}, false)
 	if err != nil {
@@ -110,29 +111,17 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Found %d eligible role(s):\n\n", len(eligibleRoles))
-	fmt.Print(ui.RenderEligibleRolesTable(eligibleRoles))
+	fmt.Print(ui.RenderRolesTable(eligibleRoles, false))
 
 	return nil
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	azure.Verbose = verbose
-
-	if err := checkPrerequisites(); err != nil {
+	if _, err := fetchCurrentUser(false); err != nil {
 		return err
 	}
 
-	// Get current user info
-	user, err := ui.SpinWithResult("Fetching user info", func() (*azure.UserInfo, error) {
-		return azure.GetCurrentUser()
-	}, false)
-	if err != nil {
-		return fmt.Errorf("failed to get current user: %w", err)
-	}
-	fmt.Printf("Logged in as: %s\n\n", ui.TitleStyle.Render(user.DisplayName))
-
-	// Fetch active role assignments
-	activeRoles, err := ui.SpinWithResult("Fetching active roles", func() ([]azure.EligibleRole, error) {
+	activeRoles, err := ui.SpinWithResult("Fetching active roles", func() ([]azure.RoleAssignment, error) {
 		return azure.GetActiveRoleAssignments()
 	}, false)
 	if err != nil {
@@ -145,30 +134,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Found %d active role(s):\n\n", len(activeRoles))
-	fmt.Print(ui.RenderActiveRolesTable(activeRoles))
+	fmt.Print(ui.RenderRolesTable(activeRoles, true))
 
 	return nil
 }
 
 func runActivate(cmd *cobra.Command, args []string) error {
-	// Set verbose mode in azure package
-	azure.Verbose = verbose
-
-	if err := checkPrerequisites(); err != nil {
+	if _, err := fetchCurrentUser(nonInteractive); err != nil {
 		return err
 	}
 
-	// Get current user info
-	user, err := ui.SpinWithResult("Fetching user info", func() (*azure.UserInfo, error) {
-		return azure.GetCurrentUser()
-	}, nonInteractive)
-	if err != nil {
-		return fmt.Errorf("failed to get current user: %w", err)
-	}
-	fmt.Printf("Logged in as: %s\n\n", ui.TitleStyle.Render(user.DisplayName))
-
-	// Fetch eligible role assignments
-	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.EligibleRole, error) {
+	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.RoleAssignment, error) {
 		return azure.GetEligibleRoleAssignments()
 	}, nonInteractive)
 	if err != nil {
@@ -182,13 +158,11 @@ func runActivate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Let user select a role to activate
 	selectedRole, err := ui.SelectRole(eligibleRoles, nonInteractive)
 	if err != nil {
 		return fmt.Errorf("role selection failed: %w", err)
 	}
 
-	// Get justification if not provided
 	justification := reason
 	if justification == "" && !nonInteractive {
 		justification, err = ui.PromptForJustification()
@@ -197,7 +171,6 @@ func runActivate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Activate the role
 	activationRequest := azure.ActivationRequest{
 		Role:          *selectedRole,
 		Duration:      duration,

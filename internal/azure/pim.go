@@ -13,8 +13,8 @@ import (
 // Verbose enables debug output when set to true
 var Verbose bool
 
-// EligibleRole represents an eligible role assignment from PIM
-type EligibleRole struct {
+// RoleAssignment represents a PIM role assignment (eligible or active)
+type RoleAssignment struct {
 	ID                     string
 	RoleDefinitionID       string
 	RoleName               string
@@ -62,7 +62,7 @@ type PrincipalInfo struct {
 
 // ActivationRequest contains parameters for role activation
 type ActivationRequest struct {
-	Role          EligibleRole
+	Role          RoleAssignment
 	Duration      int    // in minutes
 	Justification string
 	TicketNumber  string
@@ -96,8 +96,8 @@ type roleEligibilityScheduleInstancesResponse struct {
 }
 
 // GetEligibleRoleAssignments fetches all eligible PIM role assignments for the current user
-func GetEligibleRoleAssignments() ([]EligibleRole, error) {
-	var allRoles []EligibleRole
+func GetEligibleRoleAssignments() ([]RoleAssignment, error) {
+	var allRoles []RoleAssignment
 
 	// Get all subscriptions first
 	subscriptions, err := getSubscriptions()
@@ -125,7 +125,7 @@ func GetEligibleRoleAssignments() ([]EligibleRole, error) {
 
 	// Deduplicate roles based on ID
 	seen := make(map[string]bool)
-	uniqueRoles := make([]EligibleRole, 0)
+	uniqueRoles := make([]RoleAssignment, 0)
 	for _, role := range allRoles {
 		if !seen[role.ID] {
 			seen[role.ID] = true
@@ -156,7 +156,7 @@ func getSubscriptions() ([]subscription, error) {
 	return subs, nil
 }
 
-func getEligibleRolesAtScope(scope string) ([]EligibleRole, error) {
+func getEligibleRolesAtScope(scope string) ([]RoleAssignment, error) {
 	var url string
 	if scope == "" {
 		// Use the Azure management API for all eligible roles
@@ -168,8 +168,8 @@ func getEligibleRolesAtScope(scope string) ([]EligibleRole, error) {
 	return fetchEligibleRoles(url)
 }
 
-func fetchEligibleRoles(url string) ([]EligibleRole, error) {
-	var allRoles []EligibleRole
+func fetchEligibleRoles(url string) ([]RoleAssignment, error) {
+	var allRoles []RoleAssignment
 
 	for url != "" {
 		output, err := runAzCommand("rest", "--method", "GET", "--url", url)
@@ -183,7 +183,7 @@ func fetchEligibleRoles(url string) ([]EligibleRole, error) {
 		}
 
 		for _, item := range response.Value {
-			role := EligibleRole{
+			role := RoleAssignment{
 				ID:               item.ID,
 				EligibilityID:    item.ID,
 				RoleDefinitionID: item.Properties.RoleDefinitionID,
@@ -353,7 +353,7 @@ func getEligibilityScheduleID(scope, roleDefinitionID, principalID string) (stri
 }
 
 // GetActiveRoleAssignments fetches currently active PIM role assignments
-func GetActiveRoleAssignments() ([]EligibleRole, error) {
+func GetActiveRoleAssignments() ([]RoleAssignment, error) {
 	url := "https://management.azure.com/providers/Microsoft.Authorization/roleAssignmentScheduleInstances?api-version=2020-10-01&$filter=asTarget()&$expand=roleDefinition,principal"
 
 	output, err := runAzCommand("rest", "--method", "GET", "--url", url)
@@ -366,9 +366,9 @@ func GetActiveRoleAssignments() ([]EligibleRole, error) {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	var roles []EligibleRole
+	var roles []RoleAssignment
 	for _, item := range response.Value {
-		role := EligibleRole{
+		role := RoleAssignment{
 			ID:               item.ID,
 			RoleDefinitionID: item.Properties.RoleDefinitionID,
 			Scope:            item.Properties.Scope,

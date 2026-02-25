@@ -92,7 +92,11 @@ func SpinWithResult[T any](title string, fn func() (T, error), nonInteractive bo
 		return zero, fmt.Errorf("spinner program failed: %w", err)
 	}
 
-	result := finalModel.(spinnerModel)
+	result, ok := finalModel.(spinnerModel)
+	if !ok {
+		var zero T
+		return zero, fmt.Errorf("unexpected model type")
+	}
 	if result.err != nil {
 		var zero T
 		return zero, result.err

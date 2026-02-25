@@ -59,7 +59,10 @@ func PromptForJustification() (string, error) {
 		return "", fmt.Errorf("text prompt failed: %w", err)
 	}
 
-	result := finalModel.(textPromptModel)
+	result, ok := finalModel.(textPromptModel)
+	if !ok {
+		return "", fmt.Errorf("unexpected model type")
+	}
 	if result.cancelled {
 		return "", fmt.Errorf("cancelled")
 	}

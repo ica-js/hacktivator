@@ -16,7 +16,7 @@ import (
 
 // roleItem implements list.Item for the role selector.
 type roleItem struct {
-	role azure.EligibleRole
+	role azure.RoleAssignment
 }
 
 func (i roleItem) Title() string       { return i.role.RoleName }
@@ -30,14 +30,14 @@ const minPreviewWidth = 60
 type selectorModel struct {
 	list        list.Model
 	viewport    viewport.Model
-	selected    *azure.EligibleRole
+	selected    *azure.RoleAssignment
 	cancelled   bool
 	width       int
 	height      int
 	showPreview bool
 }
 
-func newSelectorModel(roles []azure.EligibleRole, title string) selectorModel {
+func newSelectorModel(roles []azure.RoleAssignment, title string) selectorModel {
 	items := make([]list.Item, len(roles))
 	for i, r := range roles {
 		items[i] = roleItem{role: r}
@@ -172,7 +172,7 @@ func (m selectorModel) View() string {
 }
 
 // SelectRole presents an interactive fuzzy list for selecting an eligible role.
-func SelectRole(roles []azure.EligibleRole, nonInteractive bool) (*azure.EligibleRole, error) {
+func SelectRole(roles []azure.RoleAssignment, nonInteractive bool) (*azure.RoleAssignment, error) {
 	if len(roles) == 0 {
 		return nil, fmt.Errorf("no eligible roles available")
 	}
@@ -195,7 +195,10 @@ func SelectRole(roles []azure.EligibleRole, nonInteractive bool) (*azure.Eligibl
 		return nil, fmt.Errorf("selector failed: %w", err)
 	}
 
-	result := finalModel.(selectorModel)
+	result, ok := finalModel.(selectorModel)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type")
+	}
 	if result.cancelled {
 		return nil, fmt.Errorf("selection cancelled")
 	}
@@ -206,117 +209,3 @@ func SelectRole(roles []azure.EligibleRole, nonInteractive bool) (*azure.Eligibl
 	return result.selected, nil
 }
 
-// --- Subscription selector (simple, no preview) ---
-
-type subscriptionItem struct {
-	sub azure.Subscription
-}
-
-func (i subscriptionItem) Title() string       { return i.sub.DisplayName }
-func (i subscriptionItem) Description() string { return i.sub.SubscriptionID }
-func (i subscriptionItem) FilterValue() string {
-	return fmt.Sprintf("%s %s", i.sub.DisplayName, i.sub.SubscriptionID)
-}
-
-type subSelectorModel struct {
-	list      list.Model
-	selected  *azure.Subscription
-	cancelled bool
-}
-
-func (m subSelectorModel) Init() tea.Cmd { return nil }
-
-func (m subSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, msg.Height)
-		return m, nil
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEnter:
-			if m.list.FilterState() != list.Filtering {
-				if item, ok := m.list.SelectedItem().(subscriptionItem); ok {
-					m.selected = &item.sub
-				}
-				return m, tea.Quit
-			}
-		case tea.KeyCtrlC:
-			m.cancelled = true
-			return m, tea.Quit
-		case tea.KeyEscape:
-			if m.list.FilterState() != list.Filtering {
-				m.cancelled = true
-				return m, tea.Quit
-			}
-		}
-	}
-
-	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
-	return m, cmd
-}
-
-func (m subSelectorModel) View() string { return m.list.View() }
-
-// SelectSubscription presents an interactive fuzzy list for selecting a subscription.
-func SelectSubscription(subscriptions []azure.Subscription, nonInteractive bool) (*azure.Subscription, error) {
-	if len(subscriptions) == 0 {
-		return nil, fmt.Errorf("no subscriptions available")
-	}
-
-	if len(subscriptions) == 1 {
-		fmt.Println(SuccessStyle.Render(
-			fmt.Sprintf("Auto-selecting the only subscription: %s", subscriptions[0].DisplayName)))
-		return &subscriptions[0], nil
-	}
-
-	if nonInteractive {
-		return nil, fmt.Errorf("multiple subscriptions available but running in non-interactive mode")
-	}
-
-	items := make([]list.Item, len(subscriptions))
-	for i, s := range subscriptions {
-		items[i] = subscriptionItem{sub: s}
-	}
-
-	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
-	l.Title = "Select subscription"
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = TitleStyle
-	l.KeyMap.Quit.SetEnabled(false)
-
-	m := subSelectorModel{list: l}
-	p := tea.NewProgram(m, tea.WithAltScreen())
-
-	finalModel, err := p.Run()
-	if err != nil {
-		return nil, fmt.Errorf("selector failed: %w", err)
-	}
-
-	result := finalModel.(subSelectorModel)
-	if result.cancelled {
-		return nil, fmt.Errorf("selection cancelled")
-	}
-	if result.selected == nil {
-		return nil, fmt.Errorf("no subscription selected")
-	}
-
-	return result.selected, nil
-}
-
-// Confirm asks the user for confirmation (unchanged — not used in main flows).
-func Confirm(message string, nonInteractive bool) (bool, error) {
-	if nonInteractive {
-		return true, nil
-	}
-
-	fmt.Printf("%s [y/N]: ", message)
-	var response string
-	_, err := fmt.Scanln(&response)
-	if err != nil {
-		return false, nil
-	}
-
-	response = strings.ToLower(strings.TrimSpace(response))
-	return response == "y" || response == "yes", nil
-}
