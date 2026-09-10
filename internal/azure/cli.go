@@ -16,6 +16,29 @@ type UserInfo struct {
 	UPN         string `json:"userPrincipalName"`
 }
 
+// AccountInfo contains non-secret context from the active Azure CLI account.
+type AccountInfo struct {
+	ID              string `json:"id"`
+	TenantID        string `json:"tenantId"`
+	EnvironmentName string `json:"environmentName"`
+	User            struct {
+		Name string `json:"name"`
+	} `json:"user"`
+}
+
+// GetCurrentAccount returns the login context without obtaining or persisting tokens.
+func GetCurrentAccount() (AccountInfo, error) {
+	var account AccountInfo
+	output, err := runAzCommand("account", "show", "--output", "json")
+	if err != nil {
+		return account, err
+	}
+	if err := json.Unmarshal([]byte(output), &account); err != nil {
+		return account, fmt.Errorf("failed to parse Azure account: %w", err)
+	}
+	return account, nil
+}
+
 // IsAzCliInstalled checks if the Azure CLI is installed
 func IsAzCliInstalled() bool {
 	_, err := exec.LookPath("az")
@@ -24,7 +47,7 @@ func IsAzCliInstalled() bool {
 
 // IsAuthenticated checks if the user is logged in to Azure CLI
 func IsAuthenticated() bool {
-	_, err := runAzCommand("account", "show")
+	_, err := GetCurrentAccount()
 	return err == nil
 }
 
@@ -55,17 +78,8 @@ func GetCurrentUserPrincipalID() (string, error) {
 
 // getCurrentUserFromAccount gets user info from az account show as fallback
 func getCurrentUserFromAccount() (*UserInfo, error) {
-	output, err := runAzCommand("account", "show", "--output", "json")
+	account, err := GetCurrentAccount()
 	if err != nil {
-		return nil, err
-	}
-
-	var account struct {
-		User struct {
-			Name string `json:"name"`
-		} `json:"user"`
-	}
-	if err := json.Unmarshal([]byte(output), &account); err != nil {
 		return nil, err
 	}
 

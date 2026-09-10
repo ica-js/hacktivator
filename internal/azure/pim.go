@@ -2,9 +2,11 @@ package azure
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -95,45 +97,67 @@ type roleEligibilityScheduleInstancesResponse struct {
 	NextLink string `json:"nextLink,omitempty"`
 }
 
-// GetEligibleRoleAssignments fetches all eligible PIM role assignments for the current user
-func GetEligibleRoleAssignments() ([]RoleAssignment, error) {
-	var allRoles []RoleAssignment
-
-	// Get all subscriptions first
+// fetchEligibleRoleAssignments fetches fresh eligible PIM role assignments for the current user.
+func fetchEligibleRoleAssignments() (EligibilityResult, error) {
 	subscriptions, err := getSubscriptions()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get subscriptions: %w", err)
+		return EligibilityResult{}, fmt.Errorf("failed to get subscriptions: %w", err)
 	}
 
-	// Also check at tenant level using the management API
-	// This covers management groups and other scopes
-	roles, err := getEligibleRolesAtScope("")
-	if err == nil {
-		allRoles = append(allRoles, roles...)
-	}
+	return fetchEligibleRoleAssignmentsForSubscriptions(subscriptions, getEligibleRolesAtScope)
+}
 
-	// Fetch eligible roles for each subscription
+func fetchEligibleRoleAssignmentsForSubscriptions(subscriptions []subscription, fetchScope func(string) ([]RoleAssignment, error)) (EligibilityResult, error) {
+	// Tenant scope also covers management groups and other non-subscription scopes.
+	scopes := make([]string, 1, len(subscriptions)+1)
 	for _, sub := range subscriptions {
-		scope := fmt.Sprintf("/subscriptions/%s", sub.ID)
-		roles, err := getEligibleRolesAtScope(scope)
-		if err != nil {
-			// Log but continue - user might not have access to all subscriptions
+		scopes = append(scopes, fmt.Sprintf("/subscriptions/%s", sub.ID))
+	}
+
+	results := make([]struct {
+		roles []RoleAssignment
+		err   error
+	}, len(scopes))
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	for i := 0; i < min(4, len(scopes)); i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				// Each worker owns one result slot; pagination within a scope is sequential.
+				results[index].roles, results[index].err = fetchScope(scopes[index])
+			}
+		}()
+	}
+	for index := range scopes {
+		jobs <- index
+	}
+	close(jobs)
+	workers.Wait()
+
+	result := EligibilityResult{Roles: make([]RoleAssignment, 0)}
+	seen := make(map[string]bool)
+	var scopeErrors []error
+	// Merge in scope order, not completion order, so the first occurrence of an ID wins.
+	for index, scopeResult := range results {
+		if scopeResult.err != nil {
+			err := fmt.Errorf("failed to fetch eligible roles at scope %q: %w", scopes[index], scopeResult.err)
+			result.Warnings = append(result.Warnings, err.Error())
+			scopeErrors = append(scopeErrors, err)
 			continue
 		}
-		allRoles = append(allRoles, roles...)
-	}
-
-	// Deduplicate roles based on ID
-	seen := make(map[string]bool)
-	uniqueRoles := make([]RoleAssignment, 0)
-	for _, role := range allRoles {
-		if !seen[role.ID] {
-			seen[role.ID] = true
-			uniqueRoles = append(uniqueRoles, role)
+		for _, role := range scopeResult.roles {
+			if !seen[role.ID] {
+				seen[role.ID] = true
+				result.Roles = append(result.Roles, role)
+			}
 		}
 	}
-
-	return uniqueRoles, nil
+	if len(scopeErrors) == len(scopes) {
+		return result, fmt.Errorf("failed to fetch eligible role assignments at every scope: %w", errors.Join(scopeErrors...))
+	}
+	return result, nil
 }
 
 // subscription represents an Azure subscription
@@ -165,14 +189,16 @@ func getEligibleRolesAtScope(scope string) ([]RoleAssignment, error) {
 		url = fmt.Sprintf("https://management.azure.com%s/providers/Microsoft.Authorization/roleEligibilityScheduleInstances?api-version=2020-10-01&$filter=asTarget()&$expand=roleDefinition,principal", scope)
 	}
 
-	return fetchEligibleRoles(url)
+	return fetchEligibleRoles(url, func(pageURL string) (string, error) {
+		return runAzCommand("rest", "--method", "GET", "--url", pageURL)
+	})
 }
 
-func fetchEligibleRoles(url string) ([]RoleAssignment, error) {
+func fetchEligibleRoles(url string, fetchPage func(string) (string, error)) ([]RoleAssignment, error) {
 	var allRoles []RoleAssignment
 
 	for url != "" {
-		output, err := runAzCommand("rest", "--method", "GET", "--url", url)
+		output, err := fetchPage(url)
 		if err != nil {
 			return nil, err
 		}

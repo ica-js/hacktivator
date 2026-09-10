@@ -6,7 +6,7 @@ A CLI tool to quickly activate Azure PIM (Privileged Identity Management) eligib
 
 - 🔍 **Fuzzy finder interface** - Quickly search and select from your eligible roles
 - 🔐 **Uses Azure CLI authentication** - No need to manage separate credentials
-- ⚡ **Fast activation** - Activate roles in seconds without navigating the Azure Portal
+- ⚡ **Fast activation** - Cached eligibility and parallel discovery avoid repeated subscription scans
 - 📋 **Ticket integration** - Support for ticket numbers and systems for compliance
 
 ## Prerequisites
@@ -38,7 +38,7 @@ hacktivator
 
 This will:
 1. Check your Azure CLI authentication
-2. Fetch all your eligible PIM roles across all subscriptions
+2. Load your eligible PIM roles from cache, or fetch them across all subscriptions
 3. Present an interactive fuzzy finder to select a role
 4. Prompt for justification (optional)
 5. Activate the selected role
@@ -59,6 +59,8 @@ Flags:
       --ticket-number string   Ticket number for activation request
       --ticket-system string   Ticket system name (e.g., ServiceNow, Jira)
       --non-interactive        Fail if user input is required
+      --refresh                Fetch fresh eligible roles and update the cache
+      --cache-ttl duration     Eligibility cache lifetime (default 720h / 30 days; 0 disables caching)
   -v, --verbose                Enable verbose/debug output
   -h, --help                   Help for hacktivator
 ```
@@ -101,6 +103,54 @@ Debug mode for troubleshooting:
 hacktivator -v -r "Testing"
 ```
 
+### Eligibility Cache
+
+Eligible role assignments are cached for **30 days** by default. Both activation and
+`list` use the cache; a cache hit skips subscription discovery and eligibility API
+calls. Azure CLI authentication and user lookup still run. The CLI displays the age
+of cached results and a reminder to use `--refresh`.
+
+```bash
+hacktivator                       # Reuse fresh cached eligibility
+hacktivator --refresh             # Fetch live eligibility and replace the cache
+hacktivator list --refresh        # Discover newly granted roles immediately
+hacktivator --cache-ttl 2h        # Use a shorter cache lifetime for this run
+hacktivator --cache-ttl 0         # Disable cache reads and writes for this run
+```
+
+A missing or expired cache triggers a live fetch, querying up to four scopes at a
+time. Cache age is measured from the last successful complete fetch, not the last
+use. `--refresh` bypasses an otherwise fresh cache; `--cache-ttl 0` takes precedence
+and prevents cache writes too.
+
+Cache files live in the OS user-cache directory under `hacktivator/`:
+
+- macOS: `~/Library/Caches/hacktivator/`
+- Linux: `$XDG_CACHE_HOME/hacktivator/` or `~/.cache/hacktivator/`
+- Windows: `%LocalAppData%\hacktivator\`
+
+Entries are separated by user object ID, tenant, cloud, and selected subscription.
+If the current identity cannot be established reliably, caching is skipped. Only
+role metadata is stored—never Azure tokens or credentials. Files are written
+atomically with owner-only permissions on Unix. Deleting this directory clears
+all cached eligibility.
+
+**Freshness and failures:**
+
+- Newly granted roles may not appear until a refresh or cache expiry. Revoked roles
+  may remain in the list, but Azure still checks authorization and PIM policies
+  when activating; the cache cannot grant access.
+- Expired eligibility and assignments that have not started are excluded from
+  displayed results, including on cache hits.
+- If any scope lookup fails, the CLI warns that results are incomplete and does
+  not create or replace the cache. Persistent access errors at a scope therefore
+  prevent caching until resolved. If every scope fails, the command fails.
+- Refresh failures never silently fall back to stale data. An existing cache is
+  left untouched. Unreadable or corrupt cache files trigger a live fetch; cache
+  write failures warn but do not prevent using successfully fetched roles.
+- `hacktivator status` always queries live active assignments; eligibility cache
+  flags do not change its results.
+
 ## How It Works
 
 Hacktivator uses the Azure Resource Manager PIM APIs to:
@@ -123,6 +173,7 @@ All API calls are authenticated using your existing Azure CLI session, so no add
 - Ensure you have PIM eligible roles assigned (not just active roles)
 - Try running `az login` again to refresh your token
 - Check that your account has access to the subscriptions
+- Run `hacktivator list --refresh` if your eligible roles have recently changed
 
 ### "az command failed"
 

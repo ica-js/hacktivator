@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,9 @@ var (
 	ticketSys      string
 	nonInteractive bool
 	verbose        bool
+	refresh        bool
+	cacheTTL       time.Duration
+	currentAccount azure.AccountInfo
 )
 
 func main() {
@@ -30,6 +34,9 @@ It uses the Azure CLI for authentication and provides an interactive
 fuzzy-finder interface for selecting subscriptions and roles.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			azure.Verbose = verbose
+			if cacheTTL < 0 {
+				return fmt.Errorf("--cache-ttl must not be negative")
+			}
 			return checkPrerequisites()
 		},
 		RunE: runActivate,
@@ -42,6 +49,8 @@ fuzzy-finder interface for selecting subscriptions and roles.`,
 	rootCmd.Flags().StringVar(&ticketSys, "ticket-system", "", "Ticket system name (e.g., ServiceNow, Jira)")
 	rootCmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Fail if user input is required")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose/debug output")
+	rootCmd.PersistentFlags().BoolVar(&refresh, "refresh", false, "Fetch fresh eligible roles and update the cache")
+	rootCmd.PersistentFlags().DurationVar(&cacheTTL, "cache-ttl", azure.DefaultEligibilityCacheTTL, "Eligibility cache lifetime (0 disables caching)")
 
 	// Add subcommands
 	rootCmd.AddCommand(listCmd())
@@ -75,8 +84,10 @@ func checkPrerequisites() error {
 		return fmt.Errorf("azure CLI (az) is not installed, see https://docs.microsoft.com/en-us/cli/azure/install-azure-cli")
 	}
 
-	if !azure.IsAuthenticated() {
-		return fmt.Errorf("not logged in to Azure CLI, run 'az login' first")
+	var err error
+	currentAccount, err = azure.GetCurrentAccount()
+	if err != nil {
+		return fmt.Errorf("could not read Azure CLI account, run 'az login' first: %w", err)
 	}
 
 	return nil
@@ -93,16 +104,40 @@ func fetchCurrentUser(nonInteractive bool) (*azure.UserInfo, error) {
 	return user, nil
 }
 
+func fetchEligibleRoles(user *azure.UserInfo, nonInteractive bool) ([]azure.RoleAssignment, error) {
+	result, err := ui.SpinWithResult("Loading eligible roles", func() (azure.EligibilityResult, error) {
+		return azure.GetEligibleRoleAssignments(azure.EligibilityOptions{
+			Identity: azure.EligibilityCacheIdentity{
+				Cloud:          currentAccount.EnvironmentName,
+				TenantID:       currentAccount.TenantID,
+				UserID:         user.ObjectID,
+				SubscriptionID: currentAccount.ID,
+			},
+			CacheTTL: cacheTTL,
+			Refresh:  refresh,
+		})
+	}, nonInteractive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get eligible roles: %w", err)
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", warning)
+	}
+	if result.Cached {
+		fmt.Fprintf(os.Stderr, "Using cached eligible roles (updated %s ago; use --refresh to reload).\n", time.Since(result.FetchedAt).Round(time.Second))
+	}
+	return result.Roles, nil
+}
+
 func runList(cmd *cobra.Command, args []string) error {
-	if _, err := fetchCurrentUser(false); err != nil {
+	user, err := fetchCurrentUser(false)
+	if err != nil {
 		return err
 	}
 
-	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.RoleAssignment, error) {
-		return azure.GetEligibleRoleAssignments()
-	}, false)
+	eligibleRoles, err := fetchEligibleRoles(user, false)
 	if err != nil {
-		return fmt.Errorf("failed to get eligible roles: %w", err)
+		return err
 	}
 
 	if len(eligibleRoles) == 0 {
@@ -140,15 +175,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 }
 
 func runActivate(cmd *cobra.Command, args []string) error {
-	if _, err := fetchCurrentUser(nonInteractive); err != nil {
+	user, err := fetchCurrentUser(nonInteractive)
+	if err != nil {
 		return err
 	}
 
-	eligibleRoles, err := ui.SpinWithResult("Fetching eligible roles", func() ([]azure.RoleAssignment, error) {
-		return azure.GetEligibleRoleAssignments()
-	}, nonInteractive)
+	eligibleRoles, err := fetchEligibleRoles(user, nonInteractive)
 	if err != nil {
-		return fmt.Errorf("failed to get eligible roles: %w", err)
+		return err
 	}
 
 	fmt.Printf("Found %d eligible role(s)\n", len(eligibleRoles))
